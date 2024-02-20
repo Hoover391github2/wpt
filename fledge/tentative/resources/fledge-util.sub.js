@@ -33,7 +33,7 @@ const OTHER_ORIGIN7 = 'https://{{hosts[alt][www]}}:{{ports[https][1]}}';
 //     on behavior of the script; it only serves to make the URL unique.
 // `id` will always be the last query parameter.
 function createTrackerURL(origin, uuid, dispatch, id = null) {
-  let url = new URL(`${origin}${BASE_PATH}resources/request-tracker.py`);
+  let url = new URL(`${origin}${RESOURCE_PATH}request-tracker.py`);
   let search = `uuid=${uuid}&dispatch=${dispatch}`;
   if (id)
     search += `&id=${id}`;
@@ -69,7 +69,7 @@ function createSellerBeaconURL(uuid, id = '1', origin = window.location.origin) 
 }
 
 function createDirectFromSellerSignalsURL(origin = window.location.origin) {
-  let url = new URL(`${origin}${BASE_PATH}resources/direct-from-seller-signals.py`);
+  let url = new URL(`${origin}${RESOURCE_PATH}direct-from-seller-signals.py`);
   return url.toString();
 }
 
@@ -192,6 +192,8 @@ function createBiddingScriptURL(params = {}) {
     url.searchParams.append('generateBid', params.generateBid);
   if (params.reportWin != null)
     url.searchParams.append('reportWin', params.reportWin);
+  if (params.reportAdditionalBidWin != null)
+    url.searchParams.append('reportAdditionalBidWin', params.reportAdditionalBidWin);
   if (params.error != null)
     url.searchParams.append('error', params.error);
   if (params.bid != null)
@@ -683,4 +685,46 @@ function directFromSellerSignalsValidatorCode(uuid, expectedSellerSignals,
     reportWin:
       `sendReportTo("${createBidderReportURL(uuid)}");`,
   };
+}
+
+// Creates an additional bid with the given parameters. This additional bid
+// specifies a biddingLogicURL that provides an implementation of
+// reportAdditionalBidWin that triggers a sendReportTo() to the bidder report
+// URL of the winning additional bid. Additional bids are described in more
+// detail at
+// https://github.com/WICG/turtledove/blob/main/FLEDGE.md#6-additional-bids.
+function createAdditionalBid(uuid, auctionNonce, seller, buyer, interestGroupName, bidAmount, additionalBidOverrides = {}) {
+  return {
+    interestGroup: {
+      name: interestGroupName,
+      biddingLogicURL: createBiddingScriptURL(
+        { origin: buyer,
+          reportAdditionalBidWin: `sendReportTo('${createBidderReportURL(uuid, interestGroupName)}');` }),
+      owner: buyer
+    },
+    bid: {
+      ad: ['metadata'],
+      bid: bidAmount,
+      render: createRenderURL(uuid)
+    },
+    auctionNonce: auctionNonce,
+    seller: seller,
+    ...additionalBidOverrides
+  }
+}
+
+// Fetch some number of additional bid from a seller and verify that the
+// 'Ad-Auction-Additional-Bid' header is not visible in this JavaScript context.
+// The `seller` and `auctionNonce` parameters are both strings.
+// The `additionalBids` parameter is a list of additional bids.
+async function fetchAdditionalBids(seller, auctionNonce, additionalBids) {
+  const url = new URL(`${seller}${RESOURCE_PATH}additional-bids.py`);
+  url.searchParams.append('auctionNonce', auctionNonce);
+  url.searchParams.append('additionalBids', JSON.stringify(additionalBids));
+  const response = await fetch(url.href, { adAuctionHeaders: true, });
+
+  assert_equals(response.status, 200, 'Failed to fetch additional bid: ' + await response.text());
+  assert_false(
+      response.headers.has('Ad-Auction-Additional-Bid'),
+      'Header "Ad-Auction-Additional-Bid" should not be available in JavaScript context.');
 }
