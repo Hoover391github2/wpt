@@ -19,4 +19,10 @@ fedcm_test(async t => {
   assert_equals(cred.isAutoSelected, false);
 }, "Successfully obtaining token should resolve the promise.");
 
+fedcm_test(async t => {
+  let test_options = request_options_with_mediation_required("manifest_with_rp_mode.json");
+  let cred = await fedcm_get_and_select_first_account(t, test_options);
+  assert_equals(cred.token, "mode=widget");
+}, "Test that the rp mode bit is properly sent in widget flow.");
+
 </script>
